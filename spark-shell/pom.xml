@@ -163,6 +163,12 @@
       <artifactId>scalatest_${scala.compat.version}</artifactId>
     </dependency>
 
+    <!-- https://mvnrepository.com/artifact/commons-logging/commons-logging -->
+    <dependency>
+      <groupId>commons-logging</groupId>
+      <artifactId>commons-logging</artifactId>
+      <version>1.2</version>
+    </dependency>
 
   </dependencies>
 

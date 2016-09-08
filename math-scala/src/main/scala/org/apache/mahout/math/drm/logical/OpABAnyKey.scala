@@ -45,4 +45,8 @@ case class OpABAnyKey[B, K ](
   def nNonZero: Long =
   // TODO: for purposes of cost calculation, approximate based on operands
     throw new UnsupportedOperationException
+
+  override def toDebugString: String = {
+    s"OpABAnyKey(${A.toDebugString}, ${B.toDebugString})"
+  }
 }

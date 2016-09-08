@@ -44,4 +44,8 @@ case class OpAB[K](
   def nNonZero: Long =
   // TODO: for purposes of cost calculation, approximate based on operands
     throw new UnsupportedOperationException
+
+  override def toDebugString: String = {
+    s"OpAB(${A.toDebugString}, ${B.toDebugString})"
+  }
 }

@@ -45,4 +45,7 @@ case class OpMapBlock[S, R: ClassTag](
   /** R-like syntax for number of columns */
   def ncol: Int = if (_ncol >= 0) _ncol else A.ncol
 
+  override def toDebugString: String = {
+    s"OpMapBlock(${A.toDebugString})"
+  }
 }

@@ -39,4 +39,7 @@ case class OpCbindScalar[K](
   /** R-like syntax for number of columns */
   def ncol: Int = A.ncol + 1
 
+  override def toDebugString: String = {
+    s"OpCBindScalar(${A.toDebugString}, ${x})"
+  }
 }

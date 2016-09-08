@@ -35,8 +35,15 @@ object AtB {
 
   private final implicit val log = getLog(AtB.getClass)
 
-  def atb[A: ClassTag](operator: OpAtB[A], srcA: DrmRddInput[A], srcB: DrmRddInput[A]): DrmRddInput[Int] = {
-    atb_nograph_mmul(operator, srcA, srcB, operator.A.partitioningTag == operator.B.partitioningTag)
+  def atb[A: ClassTag](operator: OpAtB[A], srcA: DrmRddInput[A], srcB: DrmRddInput[A], allowSmartPhysicalChoices: Boolean): DrmRddInput[Int] = {
+
+    val identicalPartitioning = if (allowSmartPhysicalChoices) {
+      operator.A.partitioningTag == operator.B.partitioningTag
+    } else {
+      false
+    }
+
+    atb_nograph_mmul(operator, srcA, srcB, identicalPartitioning)
   }
   /**
    * The logic for computing A'B is pretty much map-side generation of partial outer product blocks

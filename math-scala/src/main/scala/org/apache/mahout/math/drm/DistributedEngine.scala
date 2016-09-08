@@ -18,7 +18,6 @@
 package org.apache.mahout.math.drm
 
 import org.apache.mahout.math.indexeddataset._
-
 import logical._
 import org.apache.mahout.math._
 import scalabindings._
@@ -26,10 +25,18 @@ import RLikeOps._
 import DistributedEngine._
 import org.apache.log4j.Logger
 
+import scala.collection.mutable.ListBuffer
 import scala.reflect.ClassTag
+
+case class LogicalRewrite(initialPlan: String, rewrittenPlan: String)
 
 /** Abstraction of optimizer/distributed engine */
 trait DistributedEngine {
+
+  var allowAdvancedRewrites = true
+  var allowSmartPhysicalChoices = true
+
+  val logicalRewrites = ListBuffer[LogicalRewrite]()
 
   /**
    * First optimization pass. Return physical plan that we can pass to exec(). This rewrite may
@@ -41,7 +48,15 @@ trait DistributedEngine {
    * build its own rewriting rules.
    * <P>
    */
-  def optimizerRewrite[K: ClassTag](action: DrmLike[K]): DrmLike[K] = pass3(pass2(pass1(action)))
+  def optimizerRewrite[K: ClassTag](action: DrmLike[K]): DrmLike[K] = {
+
+    println("##### " + allowAdvancedRewrites)
+    val rewrittenAction = pass3(pass2(pass1(action, allowAdvancedRewrites)))
+
+    logicalRewrites += LogicalRewrite(action.toDebugString, rewrittenAction.toDebugString)
+
+    rewrittenAction
+  }
 
   /** Second optimizer pass. Translate previously rewritten logical pipeline into physical engine plan. */
   def toPhysical[K: ClassTag](plan: DrmLike[K], ch: CacheHint.CacheHint): CheckpointedDrm[K]
@@ -137,7 +152,7 @@ object DistributedEngine {
   private val log = Logger.getLogger(DistributedEngine.getClass)
 
   /** This is mostly multiplication operations rewrites */
-  private def pass1[K](action: DrmLike[K]): DrmLike[K] = {
+  private def pass1[K](action: DrmLike[K], allowAdvancedRewrites: Boolean): DrmLike[K] = {
 
     action match {
 
@@ -147,29 +162,33 @@ object DistributedEngine {
       // self element-wise rewrite
       case OpAewB(a, b, op) if a == b => {
         op match {
-          case "*" ⇒ OpAewUnaryFunc(pass1(a), (x) ⇒ x * x)
-          case "/" ⇒ OpAewUnaryFunc(pass1(a), (x) ⇒ x / x)
+          case "*" ⇒ OpAewUnaryFunc(pass1(a, allowAdvancedRewrites), (x) ⇒ x * x)
+          case "/" ⇒ OpAewUnaryFunc(pass1(a, allowAdvancedRewrites), (x) ⇒ x / x)
           // Self "+" and "-" don't make a lot of sense, but we do include it for completeness.
-          case "+" ⇒ OpAewUnaryFunc(pass1(a), 2.0 * _)
-          case "-" ⇒ OpAewUnaryFunc(pass1(a), (_) ⇒ 0.0)
+          case "+" ⇒ OpAewUnaryFunc(pass1(a, allowAdvancedRewrites), 2.0 * _)
+          case "-" ⇒ OpAewUnaryFunc(pass1(a, allowAdvancedRewrites), (_) ⇒ 0.0)
           case _ ⇒
           require(false, s"Unsupported operator $op")
             null
         }
       }
-      case OpAB(OpAt(a), b) if a == b ⇒ OpAtA(pass1(a))
-      case OpABAnyKey(OpAtAnyKey(a), b) if a == b ⇒ OpAtA(pass1(a))
+      case OpAB(OpAt(a), b) if a == b && allowAdvancedRewrites ⇒
+        println("AtA -> " + allowAdvancedRewrites)
+        OpAtA(pass1(a, allowAdvancedRewrites))
+      case OpABAnyKey(OpAtAnyKey(a), b) if a == b && allowAdvancedRewrites ⇒
+        println("AtA -> " + allowAdvancedRewrites)
+        OpAtA(pass1(a, allowAdvancedRewrites))
 
       // A small rule change: Now that we have removed ClassTag at the %*% operation, it doesn't
       // match b[Int] case automatically any longer. So, we need to check and rewrite it dynamically
       // and re-run pass1 again on the obtained tree.
-      case OpABAnyKey(a, b) if b.keyClassTag == ClassTag.Int ⇒ pass1(OpAB(a, b.asInstanceOf[DrmLike[Int]]))
-      case OpAtAnyKey(a) if a.keyClassTag == ClassTag.Int ⇒ pass1(OpAt(a.asInstanceOf[DrmLike[Int]]))
+      case OpABAnyKey(a, b) if b.keyClassTag == ClassTag.Int ⇒ pass1(OpAB(a, b.asInstanceOf[DrmLike[Int]]), allowAdvancedRewrites)
+      case OpAtAnyKey(a) if a.keyClassTag == ClassTag.Int ⇒ pass1(OpAt(a.asInstanceOf[DrmLike[Int]]), allowAdvancedRewrites)
 
       // For now, rewrite left-multiply via transpositions, i.e.
       // inCoreA %*% B = (B' %*% inCoreA')'
       case op@OpTimesLeftMatrix(a, b) ⇒
-        OpAt(OpTimesRightMatrix(A = OpAt(pass1(b)), right = a.t))
+        OpAt(OpTimesRightMatrix(A = OpAt(pass1(b, allowAdvancedRewrites)), right = a.t))
 
       // Add vertical row index concatenation for rbind() on DrmLike[Int] fragments
       case op@OpRbind(a, b) if op.keyClassTag == ClassTag.Int ⇒
@@ -177,23 +196,23 @@ object DistributedEngine {
         // Make sure closure sees only local vals, not attributes. We need to do these ugly casts
         // around because compiler could not infer that K is the same as Int, based on if() above.
         val ma = safeToNonNegInt(a.nrow)
-        val bAdjusted = new OpMapBlock[Int, Int](A = pass1(b.asInstanceOf[DrmLike[Int]]), bmf = {
+        val bAdjusted = new OpMapBlock[Int, Int](A = pass1(b.asInstanceOf[DrmLike[Int]], allowAdvancedRewrites), bmf = {
           case (keys, block) ⇒ keys.map(_ + ma) → block
         }, identicallyPartitioned = false)
         val aAdjusted = a.asInstanceOf[DrmLike[Int]]
-        OpRbind(pass1(aAdjusted), bAdjusted).asInstanceOf[DrmLike[K]]
+        OpRbind(pass1(aAdjusted, allowAdvancedRewrites), bAdjusted).asInstanceOf[DrmLike[K]]
 
       // Stop at checkpoints
       case cd: CheckpointedDrm[_] ⇒ action
 
       // For everything else we just pass-thru the operator arguments to optimizer
       case uop: AbstractUnaryOp[_, K] ⇒
-        uop.A = pass1(uop.A)
+        uop.A = pass1(uop.A, allowAdvancedRewrites)
         uop
 
       case bop: AbstractBinaryOp[_, _, K] ⇒
-        bop.A = pass1(bop.A)
-        bop.B = pass1(bop.B)
+        bop.A = pass1(bop.A, allowAdvancedRewrites)
+        bop.B = pass1(bop.B, allowAdvancedRewrites)
         bop
     }
   }

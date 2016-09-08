@@ -39,12 +39,18 @@ object AtA {
   final val PROPERTY_ATA_MMUL_BLOCKHEIGHT = "mahout.math.AtA.blockHeight"
 
   /** Materialize A'A operator */
-  def at_a(operator: OpAtA[_], srcRdd: DrmRddInput[_]): DrmRddInput[Int] = {
+  def at_a(operator: OpAtA[_], srcRdd: DrmRddInput[_], allowSmartPhysicalChoices: Boolean): DrmRddInput[Int] = {
 
     val maxInMemNCol = System.getProperty(PROPERTY_ATA_MAXINMEMNCOL, "200").toInt
     maxInMemNCol.ensuring(_ > 0, "Invalid A'A in-memory setting for optimizer")
 
-    if (operator.ncol <= maxInMemNCol) {
+    val useSlim = if (allowSmartPhysicalChoices) {
+      operator.ncol <= maxInMemNCol
+    } else {
+      false
+    }
+
+    if (useSlim) {
 
       // If we can comfortably fit upper-triangular operator into a map memory, we will run slim
       // algorithm with upper-triangular accumulators in maps. 

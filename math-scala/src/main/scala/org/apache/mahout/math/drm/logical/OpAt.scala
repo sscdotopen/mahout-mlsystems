@@ -40,4 +40,8 @@ case class OpAt(
 
   /** A' after simplifications cannot produce missing rows, ever. */
   override protected[mahout] lazy val canHaveMissingRows: Boolean = false
+
+  override def toDebugString: String = {
+    s"OpAt(${A.toDebugString})"
+  }
 }

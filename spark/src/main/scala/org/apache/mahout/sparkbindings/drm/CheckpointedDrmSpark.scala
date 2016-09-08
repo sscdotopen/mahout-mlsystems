@@ -179,6 +179,7 @@ class CheckpointedDrmSpark[K: ClassTag](
     val intRowIndex = classTag[K] == classTag[Int]
 
     if (intRowIndex) {
+      println("CACHE (computeNRow)")
       val rdd = cache().rddInput.asRowWise().asInstanceOf[DrmRdd[Int]]
 
       // I guess it is a suitable place to compute int keys consistency test here because we know
@@ -192,6 +193,7 @@ class CheckpointedDrmSpark[K: ClassTag](
       intFixExtra = (maxPlus1 - rowCount) max 0L
       maxPlus1
     } else
+      println("CACHE (computeNRow)")
       cache().rddInput.asRowWise().count()
   }
 
@@ -201,7 +203,9 @@ class CheckpointedDrmSpark[K: ClassTag](
     rddInput.isBlockified match {
       case true ⇒ rddInput.asBlockified(throw new AssertionError("not reached"))
         .map(_._2.ncol).reduce(max)
-      case false ⇒ cache().rddInput.asRowWise().map(_._2.length).fold(-1)(max)
+      case false ⇒
+        println("CACHE (computeNCol)")
+        cache().rddInput.asRowWise().map(_._2.length).fold(-1)(max)
     }
   }
 
@@ -221,4 +225,10 @@ class CheckpointedDrmSpark[K: ClassTag](
       partitioningTag = partitioningTag, _canHaveMissingRows = _canHaveMissingRows)
   }
 
+  override def toDebugString: String = {
+    val numRows = if (_nrow >= 0) _nrow else "?"
+    val numCols = if (_ncol >= 0) _ncol else "?"
+
+    s"CheckpointedSparkDrm(${numRows}, ${numCols})"
+  }
 }

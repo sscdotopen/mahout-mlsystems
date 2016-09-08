@@ -33,6 +33,7 @@ import org.apache.spark.storage.StorageLevel
 
 import scala.collection.JavaConversions._
 import scala.collection._
+import scala.collection.mutable.ListBuffer
 import scala.reflect.ClassTag
 
 /** Spark-specific non-drm-method operations */
@@ -113,7 +114,7 @@ object SparkEngine extends DistributedEngine {
   def toPhysical[K: ClassTag](plan: DrmLike[K], ch: CacheHint.CacheHint): CheckpointedDrm[K] = {
 
     // Spark-specific Physical Plan translation.
-    val rddInput = tr2phys(plan)
+    val rddInput = tr2phys(plan, allowSmartPhysicalChoices)
 
     val newcp = new CheckpointedDrmSpark(
       rddInput = rddInput,
@@ -122,6 +123,7 @@ object SparkEngine extends DistributedEngine {
       cacheHint = ch,
       partitioningTag = plan.partitioningTag
     )
+    println(s"CACHE (toPhysical) ${ch}: ${plan.toDebugString}")
     newcp.cache()
   }
 
@@ -307,7 +309,7 @@ object SparkEngine extends DistributedEngine {
   }
 
   /** Translate previously optimized physical plan */
-  private def tr2phys[K](oper: DrmLike[K]): DrmRddInput[K] = {
+  private def tr2phys[K](oper: DrmLike[K], allowSmartPhysicalChoices: Boolean): DrmRddInput[K] = {
     // I do explicit evidence propagation here since matching via case classes seems to be loosing
     // it and subsequently may cause something like DrmRddInput[Any] instead of [Int] or [String].
     // Hence you see explicit evidence attached to all recursive exec() calls.
@@ -317,29 +319,44 @@ object SparkEngine extends DistributedEngine {
       // (we cannot do actual flip for non-int-keyed arguments)
       case OpAtAnyKey(_) ⇒
         throw new IllegalArgumentException("\"A\" must be Int-keyed in this A.t expression.")
-      case op@OpAt(a) if op.keyClassTag == ClassTag.Int ⇒ At.at(op, tr2phys(a)).asInstanceOf[DrmRddInput[K]]
-      case op@OpABt(a, b) ⇒ ABt.abt(op, tr2phys(a), tr2phys(b))
-      case op@OpAtB(a, b) ⇒ AtB.atb(op, tr2phys(a), tr2phys(b)).asInstanceOf[DrmRddInput[K]]
-      case op@OpAtA(a) if op.keyClassTag == ClassTag.Int ⇒ AtA.at_a(op, tr2phys(a)).asInstanceOf[DrmRddInput[K]]
-      case op@OpAx(a, x) ⇒ Ax.ax_with_broadcast(op, tr2phys(a))
+      case op@OpAt(a) if op.keyClassTag == ClassTag.Int ⇒
+        println(s"### DEBUG ### OpAt")
+        At.at(op, tr2phys(a, allowSmartPhysicalChoices)).asInstanceOf[DrmRddInput[K]]
+      case op@OpABt(a, b) ⇒
+        println(s"### DEBUG ### OpABt")
+        ABt.abt(op, tr2phys(a, allowSmartPhysicalChoices), tr2phys(b, allowSmartPhysicalChoices))
+      case op@OpAtB(a, b) ⇒
+        println(s"### DEBUG ### OpAtB")
+        AtB.atb(op, tr2phys(a, allowSmartPhysicalChoices), tr2phys(b, allowSmartPhysicalChoices), allowSmartPhysicalChoices).asInstanceOf[DrmRddInput[K]]
+      case op@OpAtA(a) if op.keyClassTag == ClassTag.Int ⇒
+        println(s"### DEBUG ### OpAtA")
+        AtA.at_a(op, tr2phys(a, allowSmartPhysicalChoices), allowSmartPhysicalChoices).asInstanceOf[DrmRddInput[K]]
+      case op@OpAx(a, x) ⇒
+        println(s"### DEBUG ### OpAx")
+        Ax.ax_with_broadcast(op, tr2phys(a, allowSmartPhysicalChoices))
       case op@OpAtx(a, x) if op.keyClassTag == ClassTag.Int ⇒
-        Ax.atx_with_broadcast(op, tr2phys(a)).asInstanceOf[DrmRddInput[K]]
-      case op@OpAewUnaryFunc(a, _, _) ⇒ AewB.a_ew_func(op, tr2phys(a))
-      case op@OpAewUnaryFuncFusion(a, _) ⇒ AewB.a_ew_func(op, tr2phys(a))
-      case op@OpAewB(a, b, opId) ⇒ AewB.a_ew_b(op, tr2phys(a), tr2phys(b))
-      case op@OpCbind(a, b) ⇒ CbindAB.cbindAB_nograph(op, tr2phys(a), tr2phys(b))
-      case op@OpCbindScalar(a, _, _) ⇒ CbindAB.cbindAScalar(op, tr2phys(a))
-      case op@OpRbind(a, b) ⇒ RbindAB.rbindAB(op, tr2phys(a), tr2phys(b))
-      case op@OpAewScalar(a, s, _) ⇒ AewB.a_ew_scalar(op, tr2phys(a), s)
+        println(s"### DEBUG ### OpAtx")
+        Ax.atx_with_broadcast(op, tr2phys(a, allowSmartPhysicalChoices)).asInstanceOf[DrmRddInput[K]]
+      case op@OpAewUnaryFunc(a, _, _) ⇒ AewB.a_ew_func(op, tr2phys(a, allowSmartPhysicalChoices))
+      case op@OpAewUnaryFuncFusion(a, _) ⇒ AewB.a_ew_func(op, tr2phys(a, allowSmartPhysicalChoices))
+      case op@OpAewB(a, b, opId) ⇒ AewB.a_ew_b(op, tr2phys(a, allowSmartPhysicalChoices), tr2phys(b, allowSmartPhysicalChoices))
+      case op@OpCbind(a, b) ⇒ CbindAB.cbindAB_nograph(op, tr2phys(a, allowSmartPhysicalChoices), tr2phys(b, allowSmartPhysicalChoices))
+      case op@OpCbindScalar(a, _, _) ⇒
+        println(s"### DEBUG ### OpCbindScalar")
+        CbindAB.cbindAScalar(op, tr2phys(a, allowSmartPhysicalChoices))
+      case op@OpRbind(a, b) ⇒ RbindAB.rbindAB(op, tr2phys(a, allowSmartPhysicalChoices), tr2phys(b, allowSmartPhysicalChoices))
+      case op@OpAewScalar(a, s, _) ⇒ AewB.a_ew_scalar(op, tr2phys(a, allowSmartPhysicalChoices), s)
       case op@OpRowRange(a, _) if op.keyClassTag == ClassTag.Int ⇒
-        Slicing.rowRange(op, tr2phys(a)).asInstanceOf[DrmRddInput[K]]
-      case op@OpTimesRightMatrix(a, _) ⇒ AinCoreB.rightMultiply(op, tr2phys(a))
+        Slicing.rowRange(op, tr2phys(a, allowSmartPhysicalChoices)).asInstanceOf[DrmRddInput[K]]
+      case op@OpTimesRightMatrix(a, _) ⇒ AinCoreB.rightMultiply(op, tr2phys(a, allowSmartPhysicalChoices))
       // Custom operators, we just execute them
-      case blockOp: OpMapBlock[_, K] ⇒ MapBlock.exec(
-        src = tr2phys(blockOp.A),
-        operator = blockOp
-      )
-      case op@OpPar(a, _, _) ⇒ Par.exec(op, tr2phys(a))
+      case blockOp: OpMapBlock[_, K] ⇒
+        println(s"### DEBUG ### OpMapBlock")
+        MapBlock.exec(
+          src = tr2phys(blockOp.A, allowSmartPhysicalChoices),
+          operator = blockOp
+        )
+      case op@OpPar(a, _, _) ⇒ Par.exec(op, tr2phys(a, allowSmartPhysicalChoices))
       case cp: CheckpointedDrm[K] ⇒
         implicit val ktag=cp.keyClassTag
         cp.rdd: DrmRddInput[K]

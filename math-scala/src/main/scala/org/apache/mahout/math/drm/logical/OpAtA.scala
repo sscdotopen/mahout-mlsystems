@@ -39,4 +39,7 @@ case class OpAtA[K](
 
   override protected[mahout] lazy val canHaveMissingRows: Boolean = false
 
+  override def toDebugString: String = {
+    s"OpAtA(${A.toDebugString})"
+  }
 }

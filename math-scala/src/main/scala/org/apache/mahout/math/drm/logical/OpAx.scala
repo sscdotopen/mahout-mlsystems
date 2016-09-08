@@ -45,4 +45,7 @@ case class OpAx[K](
   /** R-like syntax for number of columns */
   def ncol: Int = 1
 
+  override def toDebugString: String = {
+    s"OpAx(${A.toDebugString}, ${x.size})"
+  }
 }

@@ -37,7 +37,7 @@ trait DrmLike[K] {
    * Distributed context, can be implicitly converted to operations on [[org.apache.mahout.math.drm.
    * DistributedEngine]].
    */
-  val context:DistributedContext
+  val context: DistributedContext
 
   /** R-like syntax for number of rows. */
   def nrow: Long
@@ -57,4 +57,5 @@ trait DrmLike[K] {
    */
   def checkpoint(cacheHint: CacheHint.CacheHint = CacheHint.MEMORY_ONLY): CheckpointedDrm[K]
 
+  def toDebugString = getClass.getSimpleName
 }

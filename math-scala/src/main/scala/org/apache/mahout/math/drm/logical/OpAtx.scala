@@ -46,4 +46,7 @@ case class OpAtx(
   /** R-like syntax for number of columns */
   def ncol: Int = 1
 
+  override def toDebugString: String = {
+    s"OpAtx(${A.toDebugString}, ${x.size})"
+  }
 }
