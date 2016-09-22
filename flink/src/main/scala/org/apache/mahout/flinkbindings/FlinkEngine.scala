@@ -48,7 +48,7 @@ object FlinkEngine extends DistributedEngine {
     * @param path   The DFS path to load from
     * @param parMin Minimum parallelism after load (equivalent to #par(min=...)).
     */
-  override def drmDfsRead(path: String, parMin: Int = 1)
+  override def drmDfsRead(path: String, nrow: Int = -1, ncol: Int = -1, parMin: Int = 1)
                          (implicit dc: DistributedContext): CheckpointedDrm[_] = {
 
     // Require that context is actually Flink context.

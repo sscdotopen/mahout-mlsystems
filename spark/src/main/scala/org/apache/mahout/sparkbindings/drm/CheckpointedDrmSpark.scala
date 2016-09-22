@@ -74,6 +74,8 @@ class CheckpointedDrmSpark[K: ClassTag](
    */
   def checkpoint(cacheHint: CacheHint.CacheHint): CheckpointedDrm[K] = {
     // We are already checkpointed in a sense that we already have Spark lineage. So just return self.
+
+    println(s"Checkpoint(): blockified? ${this.isBlockified}")
     this
   }
 

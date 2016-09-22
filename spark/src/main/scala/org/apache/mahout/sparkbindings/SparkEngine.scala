@@ -141,7 +141,7 @@ object SparkEngine extends DistributedEngine {
     *           scala with the type bounds, sorry)
     * @return DRM[Any] where Any is automatically translated to value type
     */
-  def drmDfsRead(path: String, parMin: Int = 0)(implicit sc: DistributedContext): CheckpointedDrm[_] = {
+  def drmDfsRead(path: String, nrow: Int = -1, ncol: Int = -1, parMin: Int = 0)(implicit sc: DistributedContext): CheckpointedDrm[_] = {
 
     // Require that context is actually Spark context.
     require(sc.isInstanceOf[SparkDistributedContext], "Supplied context must be for the Spark backend.")
@@ -160,7 +160,7 @@ object SparkEngine extends DistributedEngine {
       .map { case (wKey, wVec) ⇒ k2vFunc(wKey) -> wVec.get() }
 
     // Wrap into a DRM type with correct matrix row key class tag evident.
-    drmWrap(rdd = rdd, cacheHint = CacheHint.NONE)(drmMetadata.keyClassTag.asInstanceOf[ClassTag[Any]])
+    drmWrap(rdd = rdd, nrow = nrow, ncol = ncol, cacheHint = CacheHint.NONE)(drmMetadata.keyClassTag.asInstanceOf[ClassTag[Any]])
   }
 
   /** Parallelize in-core matrix as spark distributed matrix, using row ordinal indices as data set keys. */

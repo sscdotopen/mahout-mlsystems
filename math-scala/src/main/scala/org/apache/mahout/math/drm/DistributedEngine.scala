@@ -87,7 +87,7 @@ trait DistributedEngine {
    * @param path The DFS path to load from
    * @param parMin Minimum parallelism after load (equivalent to #par(min=...)).
    */
-  def drmDfsRead(path: String, parMin: Int = 0)(implicit sc: DistributedContext): CheckpointedDrm[_]
+  def drmDfsRead(path: String, nrow: Int = -1, ncol: Int = -1, parMin: Int = 0)(implicit sc: DistributedContext): CheckpointedDrm[_]
 
   /** Parallelize in-core matrix as the backend engine distributed matrix, using row ordinal indices as data set keys. */
   def drmParallelizeWithRowIndices(m: Matrix, numPartitions: Int = 1)(implicit sc: DistributedContext):

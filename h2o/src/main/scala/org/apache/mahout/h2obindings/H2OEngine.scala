@@ -64,7 +64,7 @@ object H2OEngine extends DistributedEngine {
     *
     *  @return DRM[Any] where Any is automatically translated to value type
     */
-  def drmDfsRead(path: String, parMin: Int = 0)(implicit dc: DistributedContext): CheckpointedDrm[_] = {
+  def drmDfsRead(path: String, nrow: Int = -1, ncol: Int = -1, parMin: Int = 0)(implicit dc: DistributedContext): CheckpointedDrm[_] = {
     val drmMetadata = hdfsUtils.readDrmHeader(path)
 
     new CheckpointedDrmH2O(H2OHdfs.drmFromFile(path, parMin), dc, CacheHint.NONE)(drmMetadata.keyClassTag.

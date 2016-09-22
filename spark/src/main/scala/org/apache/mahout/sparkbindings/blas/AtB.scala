@@ -236,6 +236,10 @@ object AtB {
     val ranges = computeEvenSplits(nrow, numPartitions)
 
     val rdd = pairwiseRdd.flatMap{ case (blockA, blockB) ⇒
+      val densityA = if (blockA.getFlavor.isDense) { "dense" } else { "sparse "}
+      val densityB = if (blockB.getFlavor.isDense) { "dense" } else { "sparse "}
+
+      println(s"AtB ${blockA.getFlavor.getStructure}:${densityA} <-> ${blockB.getFlavor.getStructure}:${densityB}")
 
       // Handling microscopic Pat's cases. Any slicing doesn't work well on 0-row matrix. This
       // probably should be fixed in the in-core matrix implementations.

@@ -33,30 +33,62 @@ object CbindAB {
 
   def cbindAScalar[K](op: OpCbindScalar[K], srcA:DrmRddInput[K]) : DrmRddInput[K] = {
 
+//    implicit val ktag = op.keyClassTag
+//    val srcRdd = srcA.asRowWise()
+//
+//    val ncol = op.A.ncol
+//    val x = op.x
+//
+//    val fixedRdd = if (classTag[K] == ClassTag.Int && x != 0.0)
+//      fixIntConsistency(op.asInstanceOf[OpCbindScalar[Int]],
+//        src = srcRdd.asInstanceOf[DrmRdd[Int]]).asInstanceOf[DrmRdd[K]]
+//    else srcRdd
+//
+//    val left = op.leftBind
+//
+//    val resultRdd = fixedRdd.map { case (key, vec) =>
+//      val newVec = vec.like(ncol + 1)
+//      if (left) {
+//        newVec(1 to ncol) := vec
+//        newVec(0) = x
+//      } else {
+//        newVec(0 until ncol) := vec
+//        newVec(ncol) = x
+//      }
+//
+//      key -> newVec
+//    }
+//
+//    val output = new DrmRddInput[K](Left(resultRdd))
+//
+//    println(s"cbindAScalar: blockified? ${output.isBlockified}")
+//
+//    resultRdd
+
     implicit val ktag = op.keyClassTag
-    val srcRdd = srcA.asRowWise()
+    println(s"cbindAScalar: INPUT blockified? ${srcA.isBlockified}")
+    assert(srcA.isBlockified)
+//    val srcRdd = srcA.asBlockified(-1)
 
     val ncol = op.A.ncol
     val x = op.x
-
-    val fixedRdd = if (classTag[K] == ClassTag.Int && x != 0.0)
-      fixIntConsistency(op.asInstanceOf[OpCbindScalar[Int]],
-        src = srcRdd.asInstanceOf[DrmRdd[Int]]).asInstanceOf[DrmRdd[K]]
-    else srcRdd
-
     val left = op.leftBind
 
-    val resultRdd = fixedRdd.map { case (key, vec) =>
-      val newVec = vec.like(ncol + 1)
+    val resultRdd = srcA.asBlockified(-1).map { case (keys: Array[K], block: Matrix) =>
+
+      val newBlock = block.like(block.rowSize(), ncol + 1)
       if (left) {
-        newVec(1 to ncol) := vec
-        newVec(0) = x
+        newBlock(::, 1 to ncol) := block
+        newBlock(::, 0) = x
       } else {
-        newVec(0 until ncol) := vec
-        newVec(ncol) = x
+        newBlock(::, 0 until ncol) := block
+        newBlock(::, ncol) = x
       }
-      key -> newVec
+
+      keys -> newBlock
     }
+
+    //println(s"cbindAScalar: OUTPUT blockified? ${output.isBlockified}")
 
     resultRdd
   }

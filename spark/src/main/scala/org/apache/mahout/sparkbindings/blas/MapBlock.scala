@@ -17,6 +17,7 @@
 
 package org.apache.mahout.sparkbindings.blas
 
+import org.apache.mahout.math.Matrix
 import org.apache.mahout.math.drm.logical.OpMapBlock
 import org.apache.mahout.math.scalabindings.RLikeOps._
 import org.apache.mahout.sparkbindings.drm.DrmRddInput
@@ -30,14 +31,25 @@ object MapBlock {
     val bmf = operator.bmf
     val ncol = operator.ncol
     implicit val rtag = operator.keyClassTag
-    src.asBlockified(operator.A.ncol).map(blockTuple => {
+
+    val sourceBlockified = src.isBlockified
+    println(s"MapBlock: input blockified? ${sourceBlockified}")
+
+    val result = src.asBlockified(operator.A.ncol).map(blockTuple => {
       val out = bmf(blockTuple)
+
+      val block = blockTuple._2.asInstanceOf[Matrix]
+      val density = if (block.getFlavor.isDense) { "dense" } else { "sparse "}
+
+      println(s"MapBlock ${block.getFlavor.getStructure}: ${density}")
 
       assert(out._2.nrow == blockTuple._2.nrow, "block mapping must return same number of rows.")
       assert(out._2.ncol == ncol, "block map must return %d number of columns.".format(ncol))
 
       out
     })
+
+    result
   }
 
 }

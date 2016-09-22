@@ -41,6 +41,8 @@ object AtA {
   /** Materialize A'A operator */
   def at_a(operator: OpAtA[_], srcRdd: DrmRddInput[_], allowSmartPhysicalChoices: Boolean): DrmRddInput[Int] = {
 
+    println(s"AtA: input blockified? ${srcRdd.isBlockified}, # cols: ${operator.A.ncol}")
+
     val maxInMemNCol = System.getProperty(PROPERTY_ATA_MAXINMEMNCOL, "200").toInt
     maxInMemNCol.ensuring(_ > 0, "Invalid A'A in-memory setting for optimizer")
 
@@ -87,7 +89,6 @@ object AtA {
 
         // Use slightly various traversal strategies over dense vs. sparse source.
         if (v.isDense) {
-
           // Update upper-triangular pattern only (due to symmetry).
           // Note: Scala for-comprehensions are said to be fairly inefficient this way, but this is
           // such spectacular case they were deesigned for.. Yes I do observe some 20% difference
@@ -98,7 +99,6 @@ object AtA {
             ut(row, col) = ut(row, col) + v(row) * v(col)
 
         } else {
-
           // Sparse source.
           v.nonZeroes().view
 
